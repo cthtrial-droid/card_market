@@ -105,6 +105,20 @@ border-radius:8px;padding:11px 15px 11px 15px}
 .cmt ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.85;color:#334155;list-style:disc}
 .cmt li{margin-bottom:4px}.cmt li:last-child{margin-bottom:0}
 .cmt b{color:#0f172a;font-weight:700}
+.prof-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:13px 16px;border-radius:9px;
+background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;margin-bottom:12px}
+.prof-head .nm{font-size:19px;font-weight:700;color:#0f172a;letter-spacing:-.3px}
+.prof-head .rk{background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:11px}
+.prof-note{flex-basis:100%;font-size:12px;color:#334155;line-height:1.75;padding-top:8px;border-top:1px solid #bfdbfe}
+.prof-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px;margin-bottom:12px}
+.pc{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.pc .l{font-size:10.5px;color:var(--mute);font-weight:600}
+.pc .v{font-size:16px;font-weight:700;color:#0f172a;margin:3px 0 2px}
+.pc .r{font-size:10.5px;font-weight:600}
+.pc .r.g{color:var(--up)}.pc .r.b{color:var(--dn)}.pc .r.n{color:var(--mute)}
+.bar{position:relative;height:14px;background:#eef2f7;border-radius:7px;overflow:hidden;min-width:90px}
+.bar>i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:7px}
+.bar>u{position:absolute;top:-2px;bottom:-2px;width:2px;background:#dc2626}
 .notebox{margin-top:12px;border:1px solid #bfdbfe;border-left:3px solid var(--accent);border-radius:8px;
 background:#fff;overflow:hidden}
 .notebox>summary{cursor:pointer;padding:9px 14px;font-size:12px;font-weight:700;color:#1e40af;list-style:none;
@@ -437,6 +451,32 @@ white-space:normal;line-height:1.6}
 <div class="table-scroll"><table class="tbl" id="rankTbl"></table></div>
 </section>
 
+<section>
+<h2>7. 회사 프로파일</h2>
+<div class="section-sub">
+회사 1개를 선택하면 손익·재무·포트폴리오·이용실적·지표를 한 화면으로 요약함.
+<b>순위·업계 비교는 상단에서 선택한 회사군</b>을 모집단으로 산출되며, 기간은 상단 연도별/분기별 토글과 아래 기준시점 선택에 연동됨
+</div>
+<div class="subtabs">
+  <span style="font-size:11px;color:#64748b;font-weight:600">대상 회사</span>
+  <select id="profCo"></select>
+  <span style="margin-left:10px;font-size:11px;color:#64748b;font-weight:600">기준시점</span>
+  <select id="profPeriod"></select>
+</div>
+<div id="profHead"></div>
+<div class="prof-cards" id="profCards"></div>
+<div class="table-scroll" style="max-height:none"><table class="tbl" id="profTbl"></table></div>
+<div class="chart-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div class="chart-wrap"><canvas id="profChart1"></canvas></div>
+  <div class="chart-wrap"><canvas id="profChart2"></canvas></div>
+</div>
+<div class="footnote">
+<b>업계 대비</b> 열은 선택 회사군의 <b>가중평균</b>(금액은 합산) 대비 배수·차이를 표시함.
+<b>순위</b>는 선택 회사군 내 순위이며, 낮을수록 양호한 지표(대손비용률·고정이하·연체·레버리지)는 <b>오름차순</b> 기준으로 산정하여
+1위가 항상 '가장 양호'를 의미하도록 통일함
+</div>
+</section>
+
 <div class="footnote" style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">
 <b>작성 기준 및 한계</b><br>
 ① 모든 수치는 금융감독원 금융통계정보시스템(FISIS) OpenAPI 원자료를 가공한 것으로, 개별 회사 <b>별도재무제표</b> 기준임<br>
@@ -459,7 +499,7 @@ const state = {
   portPeriod:null, kpiPeriod:null, rankPeriod:null, bsPeriod:null,
   usePeriod:null, cardIncPeriod:null, portCmp:'', bsChartMetric:'asset',
   wfPeriod:null, axRevPeriod:null, axCostPeriod:null, axRevMode:'amt', axCostMode:'amt',
-  revView:'func'
+  revView:'func', profCo:null, profPeriod:null
 };
 const AX_REV=[['axPay','① 결제수익'],['axLend','② 여신수익'],['axAffil','③ 겸영사업수익'],
               ['axInvest','④ 자산운용수익'],['axOther','⑤ 기타·비경상수익']];
@@ -1027,6 +1067,166 @@ function renderTopCards(keys){
   ].join('');
 }
 
+/* ── 회사 프로파일 ──────────────────────────── */
+const PROF_CARDS=[
+  ['asset','자산총계','조'],['useTotal','카드이용실적','조'],['adjRev','조정영업수익','조'],
+  ['ni','당기순이익','억'],['roe','ROE','%2'],['npl','고정이하여신비율','%2r'],
+  ['dlq','연체채권비율(1M+)','%2r'],['turn','카드자산회전율','회']
+];
+const PROF_TBL=[
+  ['sec','규모'],
+  ['asset','자산총계(억원)','amt'],['equity','자기자본(억원)','amt'],
+  ['adjRev','조정영업수익(억원)','amt'],['wfNR','순영업수익(억원)','amt'],
+  ['pretax','세전이익(억원)','amt'],['ni','당기순이익(억원)','amt'],
+  ['useTotal','카드이용실적(억원)','amt'],
+  ['sec','수익 구성 (조정영업수익 대비 %)'],
+  ['_sgCard','카드사업수익','pctRev'],['_sgLease','할부금융·리스','pctRev'],
+  ['_sgInvest','자산운용','pctRev'],['_sgOther','부대사업·기타','pctRev'],
+  ['sec','비용 구조 (조정영업수익 대비 %)'],
+  ['_cxFund','자금조달비용','pctRevR'],['_cxRisk','위험관리비용','pctRevR'],
+  ['_cxSga','일반관리비','pctRevR'],['_cxMkt','마케팅·부가서비스','pctRevR'],
+  ['_cxVan','결제망(VAN)·업무대행','pctRevR'],
+  ['sec','수익성'],
+  ['roa','ROA(%)','k2'],['roe','ROE(%)','k2'],['cardYield','카드자산수익률(%)','k2'],
+  ['merchRate','가맹점수수료율(%)','k2'],['nrRatio','순영업수익률(%)','k1'],
+  ['pretaxNR','세전이익/순영업수익(%)','k1'],['niBp','순이익(취급고,bp)','k0'],
+  ['sec','건전성·자본'],
+  ['npl','고정이하여신비율(%)','k2r'],['dlq','연체채권비율 1M+(%)','k2r'],
+  ['cov','충당금커버리지(%)','k1'],['car','조정자기자본비율(%)','k2'],
+  ['lev','레버리지(배)','k2r'],['ccr','대손비용률(%)','k2r'],['cof','실효조달금리(%)','k2r'],
+  ['sec','영업'],
+  ['turn','카드자산회전율(회)','k2'],['_cardLoanMix','카드대출 취급 비중(%)','pctUseR']
+];
+function profVal(f,r,K,key){
+  if(key.charAt(0)!=='_') {
+    if(f[key]!==undefined) return f[key];
+    if(r && r[key]!==undefined) return r[key];
+    return K[key];
+  }
+  const k=key.slice(1);
+  if(k==='cardLoanMix') return R(f.useCash+f.useLoan,f.useTotal);
+  return R(f[k],f.adjRev);
+}
+function renderProfile(){
+  const P=periods(); const keys=selKeys();
+  if(!keys.length) return;
+  const selCo=document.getElementById('profCo');
+  const want=keys.join(',');
+  if(selCo.dataset.sig!==want){
+    selCo.innerHTML=CO.filter(c=>state.sel.has(c.key))
+      .map(c=>'<option value="'+c.key+'">'+c.rank+'. '+c.name+'</option>').join('');
+    selCo.dataset.sig=want;
+    if(!keys.includes(state.profCo)) state.profCo=keys[0];
+  }
+  selCo.value=state.profCo||keys[0];
+  syncSelect(document.getElementById('profPeriod'),P,'profPeriod');
+  const p=P.find(x=>x.id===state.profPeriod)||P[P.length-1];
+  const ck=state.profCo||keys[0];
+  const co=CO.find(c=>c.key===ck);
+  const r=rec(ck,p.id); if(!r){ document.getElementById('profHead').innerHTML=''; return; }
+  const f=r[p.flow], K=kpis(bundle([ck],p.id,p.flow),p.ann);
+  const b=bundle(keys,p.id,p.flow), KB=kpis(b,p.ann);
+  const rows=keys.map(k=>{const rr=rec(k,p.id); if(!rr) return null;
+    return {k, f:rr[p.flow], r:rr, K:kpis(bundle([k],p.id,p.flow),p.ann)};}).filter(Boolean);
+  const rankOf=(key,rev)=>{
+    const vs=rows.map(x=>({k:x.k,v:profVal(x.f,x.r,x.K,key)}))
+      .filter(x=>x.v!==null&&x.v!==undefined&&!isNaN(x.v));
+    if(!vs.length) return null;
+    vs.sort((a,c)=> rev? a.v-c.v : c.v-a.v);
+    const i=vs.findIndex(x=>x.k===ck);
+    return i<0? null : {rank:i+1, n:vs.length};
+  };
+  // 헤더
+  document.getElementById('profHead').innerHTML='<div class="prof-head">'
+    +'<span class="nm">'+co.name+'</span>'
+    +(co.core20?'':'<span class="tag">매입전업</span>')
+    +'<span class="rk">자산 '+co.rank+'위 / '+CO.length+'개사</span>'
+    +'<span style="font-size:11.5px;color:#64748b">'+co.full+' · '+p.label+(state.ptype==='year'?'':' 누계')+' 기준</span>'
+    +(NOTES[ck]? '<div class="prof-note"><b>해석 노트</b> — '+NOTES[ck]+'</div>':'')
+    +'</div>';
+  // KPI 카드
+  document.getElementById('profCards').innerHTML=PROF_CARDS.map(c=>{
+    const v=profVal(f,r,K,c[0]); const rev=c[2].endsWith('r');
+    const rk=rankOf(c[0],rev);
+    const disp= c[2]==='조'? jo(v) : (c[2]==='억'? fmt(v,0)+'억원'
+      : (c[2]==='회'? fmt(v,2)+'회' : fmt(v,2)+'%'));
+    const bv=profVal(b,b,KB,c[0]);
+    const cmp = (bv&&!isNaN(bv))? (c[2]==='조'||c[2]==='억'
+        ? '업계 합산 대비 '+fmt(v/bv*100,1)+'%'
+        : '업계 '+fmt(bv,2)+' 대비 '+(v-bv>=0?'+':'')+fmt(v-bv,2)) : '';
+    const good = rk && rk.rank<=Math.ceil(rk.n/3);
+    return '<div class="pc"><div class="l">'+c[1]+'</div><div class="v">'+disp+'</div>'
+      +'<div class="r '+(good?'g':'n')+'">'+(rk? rk.rank+'위 / '+rk.n+'사':'')+'</div>'
+      +'<div class="r n" style="font-weight:500">'+cmp+'</div></div>';
+  }).join('');
+  // 비교표
+  let h='<thead><tr><th class="co-col">항목</th><th>'+co.name+'</th><th>업계 합산·가중</th>'
+    +'<th>업계 평균</th><th>순위</th><th>업계 대비</th><th style="min-width:120px">분포</th></tr></thead><tbody>';
+  const simpleAvg=(key)=>{const vs=rows.map(x=>profVal(x.f,x.r,x.K,key))
+    .filter(v=>v!==null&&v!==undefined&&!isNaN(v)); return vs.length? vs.reduce((a,c)=>a+c,0)/vs.length : null;};
+  PROF_TBL.forEach(row=>{
+    if(row[0]==='sec'){ h+='<tr class="ind-avg"><td class="co-col" colspan="7" style="text-align:left">'
+      +row[1]+'</td></tr>'; return; }
+    const [key,label,type]=row;
+    const rev=type.endsWith('r') || type==='pctRevR' || type==='pctUseR';
+    const v=profVal(f,r,K,key), bv=profVal(b,b,KB,key), av=simpleAvg(key);
+    const d= type==='amt'? 0 : (type==='k0'? 0 : (type.indexOf('1')>=0? 1 : (type.indexOf('2')>=0? 2 : 1)));
+    const rk=rankOf(key,rev);
+    let cmp='-';
+    if(v!==null&&bv&&!isNaN(v)&&!isNaN(bv)){
+      const unit = type==='k0'? 'bp' : '%p';
+      cmp= type==='amt'? fmt(v/bv*100,1)+'%' : ((v-bv>=0?'+':'')+fmt(v-bv,d)+unit);
+    }
+    const vs=rows.map(x=>profVal(x.f,x.r,x.K,key)).filter(x=>x!==null&&!isNaN(x));
+    let bar='';
+    if(vs.length>1){
+      const mn=Math.min.apply(null,vs), mx=Math.max.apply(null,vs);
+      const pos=mx>mn? (v-mn)/(mx-mn)*100 : 50;
+      const bpos=mx>mn? (bv-mn)/(mx-mn)*100 : 50;
+      bar='<div class="bar"><i style="width:'+Math.max(2,Math.min(100,pos))+'%"></i>'
+        +'<u style="left:'+Math.max(0,Math.min(99,bpos))+'%"></u></div>';
+    }
+    h+='<tr><td class="co-col">'+label+'</td>'+td(v,d)+td(bv,d)+td(av,d)
+      +'<td class="num">'+(rk? rk.rank+' / '+rk.n:'-')+'</td>'
+      +'<td class="num">'+cmp+'</td><td>'+bar+'</td></tr>';
+  });
+  document.getElementById('profTbl').innerHTML=h+'</tbody>';
+  // 차트
+  const amtDs=[
+    {label:co.name+' 조정영업수익',data:P.map(x=>{const rr=rec(ck,x.id);return rr?rr[x.flow].adjRev:null;}),
+     borderColor:'#2563eb',backgroundColor:'#2563eb',borderWidth:2,pointRadius:2,tension:.25},
+    {label:co.name+' 순영업수익',data:P.map(x=>{const rr=rec(ck,x.id);return rr?rr[x.flow].wfNR:null;}),
+     borderColor:'#059669',backgroundColor:'#059669',borderWidth:2,pointRadius:2,tension:.25},
+    {label:co.name+' 당기순이익',data:P.map(x=>{const rr=rec(ck,x.id);return rr?rr[x.flow].ni:null;}),
+     borderColor:'#f59e0b',backgroundColor:'#f59e0b',borderWidth:2,pointRadius:2,tension:.25,yAxisID:'y1'}];
+  drawProfChart('profChart1',P,amtDs,co.name+' 손익 추이 (억원)','금액(억원)','당기순이익(억원)');
+  const ratio=(fn)=>P.map(x=>{const bb=bundle([ck],x.id,x.flow); if(!bb.n) return null;
+    return fn(kpis(bb,x.ann));});
+  const ratioB=(fn)=>P.map(x=>{const bb=bundle(keys,x.id,x.flow); if(!bb.n) return null;
+    return fn(kpis(bb,x.ann));});
+  const rDs=[
+    {label:co.name+' ROE',data:ratio(K=>K.roe),borderColor:'#2563eb',backgroundColor:'#2563eb',borderWidth:2,pointRadius:2,tension:.25},
+    {label:'업계 ROE',data:ratioB(K=>K.roe),borderColor:'#93c5fd',borderDash:[5,3],borderWidth:2,pointRadius:0,tension:.25},
+    {label:co.name+' 연체1M+',data:ratio(K=>K.dlq),borderColor:'#dc2626',backgroundColor:'#dc2626',borderWidth:2,pointRadius:2,tension:.25,yAxisID:'y1'},
+    {label:'업계 연체1M+',data:ratioB(K=>K.dlq),borderColor:'#fca5a5',borderDash:[5,3],borderWidth:2,pointRadius:0,tension:.25,yAxisID:'y1'}];
+  drawProfChart('profChart2',P,rDs,co.name+' vs 업계 — ROE·연체율 추이 (%)','ROE(%)','연체채권비율(%)');
+}
+function drawProfChart(id,P,ds,title,yl,y1l){
+  if(typeof Chart==='undefined') return;
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{
+    type:'line',data:{labels:P.map(x=>x.label),datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{boxWidth:9,font:{size:10},padding:6}},
+        title:{display:true,text:title,font:{size:12}}},
+      scales:{y:{position:'left',title:{display:true,text:yl,font:{size:10}},
+                 ticks:{font:{size:10},callback:v=>v.toLocaleString()},grid:{color:'#eef2f7'}},
+              y1:{position:'right',title:{display:true,text:y1l,font:{size:10}},
+                 ticks:{font:{size:10},callback:v=>v.toLocaleString()},grid:{display:false}},
+              x:{ticks:{font:{size:10}},grid:{display:false}}}}
+  });
+}
+
 /* ── 코멘터리 엔진 ──────────────────────────── */
 const NOTES = {"SHINHAN_CARD": "신한금융지주 계열 업계 1위사. 할부금융·리스 등 겸영사업 수익이 7개사 중 최대로 카드 본업 의존도가 가장 낮은 다각화 구조. 플랫폼(신한SOL페이) 기반 비카드 수익 확대를 추진 중이며, 규모의 경제와 조달 경쟁력이 강점.", "SAMSUNG_CARD": "삼성금융계열. 자기자본 규모 대비 레버리지가 7개사 중 가장 낮은 보수적 재무구조로, 조달비용 부담이 구조적으로 작아 업계 최고 수준의 영업이익률을 유지. 겸영사업 비중이 낮은 카드 본업 집중형이며, 비용 효율 중심 운영이 특징.", "KB_CARD": "KB금융지주 계열. 가맹점수수료 중심의 결제 부문 비중이 높아 적격비용 재산정에 대한 노출도가 상대적으로 큼. 캄보디아·인도네시아·태국 등 해외 자회사를 보유하여 중장기 성장축을 해외에서 모색.", "HYUNDAI_CARD": "현대차그룹 계열. 할부금융·리스는 그룹 내 현대캐피탈·현대커머셜이 담당하여 사실상 카드 전업 구조. PLCC(상업자표시신용카드)와 데이터·플랫폼 사업 중심의 차별화 전략을 취하며, 프리미엄 카드 비중이 높아 연회비 수익 비중이 7개사 중 최고.", "LOTTE_CARD": "사모펀드(MBK파트너스) 보유 구조로 매각 추진이 장기화되고 있어 지배구조 불확실성이 상존. 모회사 신용도 보강이 제한적이어서 조달비용이 7개사 중 최고 수준이며, 카드대출 의존도가 높아 대손 부담도 큼. 자산건전성·조달구조 동시 개선이 과제.", "WOORI_CARD": "우리금융지주 계열. 비씨카드 결제망 의존에서 벗어나기 위한 독자결제망 구축을 진행해 왔으며, 이에 따른 초기 투자 부담과 중장기 수수료 절감 효과를 함께 점검할 필요. 자산 규모 대비 수익성 제고가 주요 과제.", "HANA_CARD": "하나금융지주 계열. 트래블로그 기반 해외결제 특화로 외화 관련 수익·비용 변동성이 상대적으로 큼. 판관비율이 7개사 중 최저 수준으로 비용 효율이 우수하며, 결제 부문(가맹점수수료) 비중이 가장 높은 구조.", "BC_CARD": "KT 계열의 매입·프로세싱 전업사. 회원 은행의 카드 발급·매입·정산을 대행하는 구조여서 카드자산 비중이 낮고, 가맹점수수료를 총액 인식한 뒤 발급 회원사에 배분하는 회계 구조로 카드비용률이 80%를 상회. 여신 리스크를 직접 부담하지 않아 건전성 지표가 양호하나, 결제 인프라 사업자로 벤치마킹하는 것이 타당하며 카드사와 동일 기준 비교는 부적절."};
 function cmtRows(p, keys){
@@ -1212,14 +1412,14 @@ function syncSelect(sel,P,stateKey){
 function renderAll(){
   document.getElementById('selCount').textContent='선택 '+state.sel.size+'개사';
   if(state.sel.size===0){
-    ['plTbl','cardIncTbl','wfTbl','axRevTbl','axCostTbl','bsTbl','bsSnap','portTbl','useTbl','useMixTbl','kpiTbl'].forEach(id=>
+    ['plTbl','cardIncTbl','wfTbl','axRevTbl','axCostTbl','bsTbl','bsSnap','portTbl','useTbl','useMixTbl','kpiTbl','profTbl'].forEach(id=>
       document.getElementById(id).innerHTML='<tbody><tr><td style="padding:20px;color:#94a3b8">회사를 1개 이상 선택하십시오.</td></tr></tbody>');
     document.getElementById('dynCards').innerHTML=''; document.getElementById('topCards').innerHTML='';
     ['cmtPL','cmtRev','cmtBS','cmtPort','cmtUse','cmtKPI','coNotes'].forEach(id=>{
       const e=document.getElementById(id); if(e) e.innerHTML='';});
     renderRank(); return;
   }
-  [renderCards,renderPL,renderBS,renderPort,renderUse,renderKPI,renderRank,renderComments]
+  [renderCards,renderPL,renderBS,renderPort,renderUse,renderKPI,renderRank,renderProfile,renderComments]
     .forEach(f=>{try{f();}catch(err){console.error(f.name,err);}});
 }
 function paintChips(){ document.querySelectorAll('#coChips .chip').forEach(el=>
@@ -1239,7 +1439,7 @@ document.querySelectorAll('#ptypeSeg button').forEach(b=>b.addEventListener('cli
   document.querySelectorAll('#ptypeSeg button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); state.ptype=b.dataset.p;
   ['portPeriod','kpiPeriod','rankPeriod','bsPeriod','usePeriod','cardIncPeriod',
-   'wfPeriod','axRevPeriod','axCostPeriod'].forEach(id=>{
+   'wfPeriod','axRevPeriod','axCostPeriod','profPeriod'].forEach(id=>{
     state[id]=null; document.getElementById(id).dataset.sig='';});
   renderAll();
 }));
@@ -1289,10 +1489,12 @@ document.querySelectorAll('[data-acm]').forEach(el=>el.addEventListener('click',
  ['bsPeriod',renderBS],['usePeriod',renderUse],['cardIncPeriod',renderPL],
  ['wfPeriod',()=>renderWaterfall(periods())],
  ['axRevPeriod',()=>renderAxis(periods(),'rev')],
- ['axCostPeriod',()=>renderAxis(periods(),'cost')]].forEach(x=>
+ ['axCostPeriod',()=>renderAxis(periods(),'cost')],
+ ['profPeriod',renderProfile]].forEach(x=>
   document.getElementById(x[0]).addEventListener('change',e=>{state[x[0]]=e.target.value; x[1]();
     try{renderComments();}catch(err){}}));
 document.getElementById('portCmp').addEventListener('change',e=>{state.portCmp=e.target.value; renderPort();});
+document.getElementById('profCo').addEventListener('change',e=>{state.profCo=e.target.value; renderProfile();});
 ['showSum','showAvg'].forEach(id=>document.getElementById(id).addEventListener('change',renderAll));
 
 paintChips();
